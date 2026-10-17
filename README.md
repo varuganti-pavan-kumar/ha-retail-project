@@ -1,41 +1,69 @@
-# High-Availability Retail Platform on Azure
+# HA Retail — Azure Cloud Engineering Portfolio Project
 
 ## Project Overview
 
-This project explores the design and implementation of a secure, resilient three-tier retail platform on Microsoft Azure using Terraform.
+This project demonstrates the foundations of a secure, resilient retail platform on Microsoft Azure. It uses Terraform for infrastructure as code, Azure networking for tier separation, and GitHub Actions to automate website deployment.
 
-The planned architecture separates the web, application, and database tiers, with private networking, controlled traffic flow, and future high-availability and recovery testing.
+The project is being developed incrementally, with an emphasis on cloud engineering fundamentals, security, automation, and cost awareness.
 
-## Current Progress
+## Live Demo
 
-### Milestone 1 — Terraform Foundation
-- Configured the AzureRM provider and Terraform variables.
-- Added `.gitignore` rules to help prevent Terraform state and local configuration from being committed.
-- Validated the Terraform configuration and pushed the foundation to GitHub.
+- **Hosting:** Azure Static Web Apps (Free plan)
+- **Source code:** [GitHub Repository](https://github.com/varuganti-pavan-kumar/ha-retail-project)
+- **Deployment:** GitHub Actions
+- **Website source:** `website/index.html`
 
-### Milestone 2 — Resource Group Deployment
-- Created the `ha-retail` resource group in UK South (`uksouth`) using Terraform.
-- Verified the resource group using Azure CLI.
+Changes pushed to the GitHub `main` branch automatically trigger the configured deployment workflow. A successful test confirmed that a committed website change appeared on the live site.
 
-### Milestone 3 — Virtual Network and Subnets
-- Deployed the `ha-retail-vnet` virtual network.
-- Configured address space `10.0.0.0/16`.
+## Implemented Milestones
+
+### 1. Terraform Foundation
+- Configured the AzureRM provider and Terraform version constraints.
+- Defined reusable project variables.
+- Added `.gitignore` rules to help prevent Terraform state and local configuration files from being committed.
+- Ran Terraform formatting, validation, and planning.
+
+### 2. Azure Networking
+- Created the `ha-retail` resource group in UK South (`uksouth`).
+- Deployed the `ha-retail-vnet` virtual network with address space `10.0.0.0/16`.
 - Created four subnets:
-  - Application Gateway: `10.0.1.0/24`
-  - Web tier: `10.0.2.0/24`
-  - Application tier: `10.0.3.0/24`
-  - Database tier: `10.0.4.0/24`
-- Successfully ran Terraform formatting, validation, planning, and deployment.
-- Independently verified the deployed subnets using Azure CLI.
+
+| Tier | Subnet | Address range |
+|---|---|---|
+| Application Gateway | `snet-appgateway` | `10.0.1.0/24` |
+| Web | `snet-web` | `10.0.2.0/24` |
+| Application | `snet-app` | `10.0.3.0/24` |
+| Database | `snet-db` | `10.0.4.0/24` |
+
+### 3. Network Security Groups
+Deployed and associated network security groups with the web, application, and database subnets.
+
+Configured inbound rules to allow:
+- HTTPS (TCP 443) from the Application Gateway subnet to the web subnet.
+- TCP 8080 from the web subnet to the application subnet.
+- PostgreSQL (TCP 5432) from the application subnet to the database subnet.
+
+Additional inbound rules deny other traffic matching the configured virtual-network source scope. These rules have been deployed and verified using Azure CLI; end-to-end application connectivity and comprehensive security testing remain future tasks.
+
+### 4. Static Website and CI/CD
+- Built a simple retail storefront using HTML and CSS.
+- Published it through Azure Static Web Apps.
+- Connected the GitHub repository to the deployment workflow.
+- Tested automatic deployment by pushing a website change and verifying the live update.
+
+**Architecture note:** The static storefront is currently hosted independently of the Terraform-managed virtual network. It is a working website and deployment demonstration, not yet the front end of the planned three-tier infrastructure.
 
 ## Planned Architecture
 
+The next stages aim to develop a VM-based three-tier architecture:
+
 - Azure Application Gateway as the public entry point.
-- Private web tier using Virtual Machine Scale Sets.
+- Web tier using Virtual Machine Scale Sets.
 - Application tier behind an internal load balancer.
-- Private PostgreSQL database hosted on an Azure virtual machine.
-- Network security rules to restrict traffic between tiers.
-- Future monitoring, backup, availability, and recovery testing.
+- PostgreSQL hosted on a private virtual machine.
+- Monitoring, backup, availability, and recovery testing.
+
+These components are planned and have not yet been deployed.
 
 ## Tools and Technologies
 
@@ -44,11 +72,22 @@ The planned architecture separates the web, application, and database tiers, wit
 - Azure CLI
 - PowerShell
 - Git and GitHub
+- GitHub Actions
+- Azure Static Web Apps
+- HTML and CSS
+
+## Learning Objectives
+
+- Provision cloud infrastructure using infrastructure as code.
+- Apply network segmentation and inbound traffic controls.
+- Build and verify automated deployment workflows.
+- Understand the trade-offs between cost, security, availability, and resilience.
+- Progress toward a demonstrable three-tier Azure architecture.
 
 ## Current Status
 
-The Terraform foundation, resource group, virtual network, and four subnets have been deployed and verified.
+The Terraform networking foundation, subnet-level NSGs and inbound rules, and independently hosted static storefront have been deployed. Automatic website deployment has been tested successfully.
 
-The Application Gateway, virtual machines, load balancer, database, network security rules, and high-availability mechanisms have not yet been deployed or tested.
+The virtual machines, Application Gateway, load balancer, PostgreSQL server, and high-availability mechanisms remain future milestones.
 
-This is an ongoing learning and portfolio project. Security, cost, and resilience will be evaluated as implementation progresses.
+This is an ongoing learning and portfolio project.
