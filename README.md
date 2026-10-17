@@ -2,45 +2,53 @@
 
 ## Project Overview
 
-This project explores how to design and build a secure, resilient online retail platform on Microsoft Azure using Terraform.
+This project explores the design and implementation of a secure, resilient three-tier retail platform on Microsoft Azure using Terraform.
 
-The long-term goal is to develop a three-tier architecture with separate web, application, and database layers, private networking, and appropriate high-availability and recovery mechanisms.
+The planned architecture separates the web, application, and database tiers, with private networking, controlled traffic flow, and future high-availability and recovery testing.
 
 ## Current Progress
 
 ### Milestone 1 — Terraform Foundation
-- Created a structured Terraform project.
-- Configured the AzureRM provider.
-- Defined variables for the Azure region, project name, and environment.
-- Added `.gitignore` rules to help keep Terraform state and local configuration out of Git.
-- Committed and pushed the foundation to GitHub.
+- Configured the AzureRM provider and Terraform variables.
+- Added `.gitignore` rules to help prevent Terraform state and local configuration from being committed.
+- Validated the Terraform configuration and pushed the foundation to GitHub.
 
-### Milestone 2 — First Azure Deployment
-- Created the `ha-retail` Azure resource group using Terraform.
-- Region: UK South (`uksouth`).
-- Ran `terraform validate` successfully.
-- Reviewed the Terraform plan before applying it.
-- Verified the resource group's provisioning state using Azure CLI.
+### Milestone 2 — Resource Group Deployment
+- Created the `ha-retail` resource group in UK South (`uksouth`) using Terraform.
+- Verified the resource group using Azure CLI.
+
+### Milestone 3 — Virtual Network and Subnets
+- Deployed the `ha-retail-vnet` virtual network.
+- Configured address space `10.0.0.0/16`.
+- Created four subnets:
+  - Application Gateway: `10.0.1.0/24`
+  - Web tier: `10.0.2.0/24`
+  - Application tier: `10.0.3.0/24`
+  - Database tier: `10.0.4.0/24`
+- Successfully ran Terraform formatting, validation, planning, and deployment.
+- Independently verified the deployed subnets using Azure CLI.
 
 ## Planned Architecture
 
-- Public entry point using Azure Application Gateway.
+- Azure Application Gateway as the public entry point.
 - Private web tier using Virtual Machine Scale Sets.
 - Application tier behind an internal load balancer.
 - Private PostgreSQL database hosted on an Azure virtual machine.
-- Network security rules restricting access between tiers.
-- Future investigation of availability, backups, monitoring, and recovery testing.
+- Network security rules to restrict traffic between tiers.
+- Future monitoring, backup, availability, and recovery testing.
 
-## Tools
+## Tools and Technologies
 
 - Microsoft Azure
 - Terraform
 - Azure CLI
-- Git and GitHub
 - PowerShell
+- Git and GitHub
 
 ## Current Status
 
-The Terraform foundation and initial resource group are deployed. The application tiers, database, networking, and high-availability mechanisms have not yet been implemented or tested.
+The Terraform foundation, resource group, virtual network, and four subnets have been deployed and verified.
 
-This is an evolving learning and portfolio project. Architecture decisions, security controls, costs, and resilience will be assessed as implementation progresses.
+The Application Gateway, virtual machines, load balancer, database, network security rules, and high-availability mechanisms have not yet been deployed or tested.
+
+This is an ongoing learning and portfolio project. Security, cost, and resilience will be evaluated as implementation progresses.
