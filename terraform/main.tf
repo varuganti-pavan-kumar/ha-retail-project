@@ -143,3 +143,50 @@ resource "azurerm_subnet_network_security_group_association" "db" {
   subnet_id                 = azurerm_subnet.ha_retail_db.id
   network_security_group_id = azurerm_network_security_group.db.id
 }
+
+
+# Network adapter for the web VM
+resource "azurerm_network_interface" "web" {
+  name                = "${var.project_name}-web-nic"
+  location            = azurerm_resource_group.ha_retail.location
+  resource_group_name = azurerm_resource_group.ha_retail.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.ha_retail_web.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+
+# Linux web server virtual machine
+resource "azurerm_linux_virtual_machine" "web" {
+  name                = "${var.project_name}-web-vm"
+  resource_group_name = azurerm_resource_group.ha_retail.name
+  location            = azurerm_resource_group.ha_retail.location
+  size                = "Standard_B2ats_v2"
+
+  admin_username                  = "azureuser"
+  disable_password_authentication = true
+
+  network_interface_ids = [
+    azurerm_network_interface.web.id
+  ]
+
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = file("${pathexpand("~")}/.ssh/ha-retail-vm.pub")
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+}
