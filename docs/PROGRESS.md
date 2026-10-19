@@ -1,6 +1,6 @@
 # Project Development Log
 
-This file tracks completed milestones, implementation decisions, and verification results for the HA Retail Azure project.
+This file tracks completed milestones, implementation decisions, troubleshooting, and verification results for the HA Retail Azure project.
 
 ## Milestone 1 — Terraform Foundation
 
@@ -17,7 +17,7 @@ This file tracks completed milestones, implementation decisions, and verificatio
 - Created the `ha-retail` resource group in UK South.
 - Deployed a virtual network with address space `10.0.0.0/16`.
 - Created dedicated subnets for Application Gateway, web, application, and database tiers.
-- Verified the deployed network resources using Azure CLI.
+- Verified deployed network resources using Azure CLI.
 
 ## Milestone 3 — Network Security
 
@@ -26,7 +26,7 @@ This file tracks completed milestones, implementation decisions, and verificatio
 - Associated network security groups with the web, application, and database subnets.
 - Configured inbound rules for HTTPS, application traffic on TCP 8080, and PostgreSQL on TCP 5432.
 - Added inbound deny rules for other traffic matching the configured virtual-network source scope.
-- Verified the configured rules using Azure CLI.
+- Verified configured rules using Azure CLI.
 
 ## Milestone 4 — Static Storefront
 
@@ -40,18 +40,45 @@ This file tracks completed milestones, implementation decisions, and verificatio
 
 **Status:** Tested successfully
 
-- Updated the storefront source code.
-- Committed and pushed the change to GitHub.
+- Committed and pushed storefront changes to GitHub.
 - Verified the GitHub Actions deployment workflow.
-- Confirmed the updated content appeared on the live website.
+- Confirmed updated content appeared on the live website.
+
+## Milestone 6 — VM Deployment Troubleshooting
+
+**Status:** Investigated; resolved by changing region
+
+- Encountered VM deployment failures in UK South due to SKU capacity and subscription availability restrictions.
+- Tested alternative VM sizes, including `Standard_B1s` and `Standard_B2ats_v2`.
+- Used Azure CLI to inspect regional SKU restrictions and VM quota.
+- Investigated East US 2 and found similar subscription restrictions for the VM sizes checked.
+- Confirmed that available vCPU quota does not guarantee availability of a particular VM SKU.
+- Evaluated South India and created a separate Terraform configuration and resource group.
+
+## Milestone 7 — South India VM and Web Server Validation
+
+**Status:** Successful
+
+- Validated the separate Terraform configuration and reviewed a plan for 14 resources.
+- Successfully deployed 14 Azure resources.
+- Verified that the Ubuntu Linux VM was running.
+- Executed remote commands using Azure Run Command without opening inbound SSH access.
+- Installed Nginx and enabled it to start automatically.
+- Tested Nginx using `curl -I http://localhost`.
+- Received `HTTP/1.1 200 OK`, confirming that Nginx responded successfully inside the VM.
 
 ## Next Milestones
 
-- Deploy and test the planned VM-based three-tier architecture.
-- Configure the Application Gateway and load balancing.
-- Deploy the application tier and private PostgreSQL server.
+- Deploy and test the application tier.
+- Deploy and configure the database tier.
+- Verify communication between the web, application, and database tiers.
+- Configure Application Gateway and load balancing.
 - Implement monitoring, backup, and resilience testing.
 
 ## Project Notes
 
-The static storefront is currently hosted independently of the Terraform-managed virtual network. The complete three-tier application and its high-availability mechanisms have not yet been deployed.
+- The static storefront is hosted independently of the Terraform-managed virtual network.
+- The VM and Nginx test confirms local web-server functionality; public access has not been tested.
+- The complete three-tier application and its high-availability mechanisms have not yet been deployed.
+- The South India infrastructure is managed through a separate Terraform configuration in `terraform-southindia`.
+- VM SKU availability varies by region and subscription.
