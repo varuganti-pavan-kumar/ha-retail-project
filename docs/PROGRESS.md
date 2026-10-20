@@ -1,84 +1,117 @@
 # Project Development Log
 
-This file tracks completed milestones, implementation decisions, troubleshooting, and verification results for the HA Retail Azure project.
+This file tracks completed milestones, implementation progress, troubleshooting, validation results, and remaining work for the HA Retail Azure project.
 
 ## Milestone 1 — Terraform Foundation
 
-**Status:** Completed
+**Status: Completed**
 
 - Configured the Terraform Azure provider and version constraints.
 - Added project variables and `.gitignore` rules.
 - Ran Terraform formatting, validation, and planning.
+- Created a separate Terraform configuration in `terraform-southindia/` for the South India infrastructure.
 
-## Milestone 2 — Azure Network Foundation
+## Milestone 2 — South India Network Foundation
 
-**Status:** Completed
+**Status: Deployed**
 
-- Created the `ha-retail` resource group in UK South.
-- Deployed a virtual network with address space `10.0.0.0/16`.
-- Created dedicated subnets for Application Gateway, web, application, and database tiers.
-- Verified deployed network resources using Azure CLI.
+- Created resource group `ha-retail-southindia`.
+- Created virtual network `ha-retail-vnet` with address space `10.0.0.0/16`.
+- Created the Application Gateway subnet `10.0.1.0/24`.
+- Created the web subnet `10.0.2.0/24`.
+- Created the application subnet `10.0.3.0/24`.
+- Configured network security groups for the web and application subnets.
+- Deployed the web and application Linux VMs without public IP addresses.
 
-## Milestone 3 — Network Security
+## Milestone 3 — Web Server Setup and Validation
 
-**Status:** Implemented; end-to-end connectivity testing pending
+**Status: Local test passed**
 
-- Associated network security groups with the web, application, and database subnets.
-- Configured inbound rules for HTTPS, application traffic on TCP 8080, and PostgreSQL on TCP 5432.
-- Added inbound deny rules for other traffic matching the configured virtual-network source scope.
-- Verified configured rules using Azure CLI.
+- Installed Nginx on the Web VM.
+- Enabled Nginx to start automatically.
+- Tested `http://localhost` on the Web VM.
+- Received `HTTP/1.1 200 OK`, confirming that Nginx responded locally.
 
-## Milestone 4 — Static Storefront
+This test did not verify public website access.
 
-**Status:** Completed
+## Milestone 4 — Private Network Connectivity
 
-- Created a static retail storefront using HTML and CSS.
-- Published it using Azure Static Web Apps.
-- Connected the GitHub repository to automated deployment.
+**Status: Partially verified**
 
-## Milestone 5 — CI/CD Verification
+- Sent an HTTP request from the App VM to the Web VM at `10.0.2.4`.
+- Received `HTTP/1.1 200 OK`.
+- Confirmed that the App VM could reach Nginx on the Web VM over the private network.
 
-**Status:** Tested successfully
+**Important limitation:** This test verified App VM → Web VM connectivity. The intended Web VM → App VM flow on TCP port 8080 has not yet been tested successfully.
+
+## Milestone 5 — PostgreSQL Infrastructure
+
+**Status: Deployed; connectivity checks passed**
+
+- Created a separate resource group and virtual network in UK South.
+- Created the delegated PostgreSQL subnet `10.1.1.0/24`.
+- Deployed Azure Database for PostgreSQL Flexible Server with public network access disabled.
+- Configured bidirectional VNet peering between South India and UK South.
+- Linked the PostgreSQL private DNS zone to both virtual networks.
+- Verified that the PostgreSQL hostname resolved to `10.1.1.4` from the App VM.
+- Verified TCP connectivity from the App VM to PostgreSQL port 5432.
+
+**Still pending:** Successful database authentication and execution of a test SQL query.
+
+## Milestone 6 — Static Retail Storefront
+
+**Status: Previously deployed**
+
+- Created the static retail storefront using HTML and CSS.
+- Published the storefront using Azure Static Web Apps.
+- Connected the GitHub repository to the deployment workflow.
+
+The storefront is hosted independently of the Terraform-managed virtual network. Its deployment does not mean that the backend application or database is integrated.
+
+## Milestone 7 — CI/CD Verification
+
+**Status: Previously tested successfully**
 
 - Committed and pushed storefront changes to GitHub.
 - Verified the GitHub Actions deployment workflow.
-- Confirmed updated content appeared on the live website.
+- Confirmed that updated content appeared on the live website.
 
-## Milestone 6 — VM Deployment Troubleshooting
+## Milestone 8 — VM SKU and Quota Troubleshooting
 
-**Status:** Investigated; resolved by changing region
+**Status: Resolved for the deployed VMs**
 
-- Encountered VM deployment failures in UK South due to SKU capacity and subscription availability restrictions.
-- Tested alternative VM sizes, including `Standard_B1s` and `Standard_B2ats_v2`.
-- Used Azure CLI to inspect regional SKU restrictions and VM quota.
-- Investigated East US 2 and found similar subscription restrictions for the VM sizes checked.
-- Confirmed that available vCPU quota does not guarantee availability of a particular VM SKU.
-- Evaluated South India and created a separate Terraform configuration and resource group.
+- Investigated VM deployment failures caused by regional SKU availability and subscription quota restrictions.
+- Used Azure CLI to inspect VM SKU restrictions and vCPU quotas.
+- Selected `Standard_B2ats_v2`.
+- Successfully deployed both South India VMs.
 
-## Milestone 7 — South India VM and Web Server Validation
+## Milestone 9 — Cost Management
 
-**Status:** Successful
+**Status: Compute stopped after testing**
 
-- Validated the separate Terraform configuration and reviewed a plan for 14 resources.
-- Successfully deployed 14 Azure resources.
-- Verified that the Ubuntu Linux VM was running.
-- Executed remote commands using Azure Run Command without opening inbound SSH access.
-- Installed Nginx and enabled it to start automatically.
-- Tested Nginx using `curl -I http://localhost`.
-- Received `HTTP/1.1 200 OK`, confirming that Nginx responded successfully inside the VM.
+- Deallocated the Web VM.
+- Deallocated the App VM.
+- Stopped the PostgreSQL Flexible Server.
+- Confirmed that the VMs were deallocated and PostgreSQL was stopped.
+
+Stopping compute does not eliminate all costs. Storage, backups, DNS, networking, and other retained resources may continue to incur charges. PostgreSQL may automatically restart after its permitted stopped period.
 
 ## Next Milestones
 
-- Deploy and test the application tier.
-- Deploy and configure the database tier.
-- Verify communication between the web, application, and database tiers.
-- Configure Application Gateway and load balancing.
-- Implement monitoring, backup, and resilience testing.
+1. Start the VMs and run a simple test service on the App VM's TCP port 8080.
+2. Test Web VM → App VM connectivity and record the actual result.
+3. Securely authenticate to PostgreSQL and execute a test SQL query.
+4. Deploy the application service and connect it to PostgreSQL.
+5. Configure and validate Application Gateway if required.
+6. Implement monitoring, backups, and resilience testing.
+7. Review security rules and ongoing Azure costs.
 
 ## Project Notes
 
-- The static storefront is hosted independently of the Terraform-managed virtual network.
-- The VM and Nginx test confirms local web-server functionality; public access has not been tested.
-- The complete three-tier application and its high-availability mechanisms have not yet been deployed.
-- The South India infrastructure is managed through a separate Terraform configuration in `terraform-southindia`.
-- VM SKU availability varies by region and subscription.
+- The primary VM and network configuration is maintained in `terraform-southindia/`.
+- The web and application VMs are in South India; PostgreSQL is in UK South.
+- The Application Gateway subnet exists, but no Application Gateway has been deployed.
+- The current Terraform configuration does not define a separate NSG for the PostgreSQL subnet.
+- Nginx local testing, App-to-Web HTTP connectivity, PostgreSQL DNS resolution, and PostgreSQL TCP connectivity passed.
+- Web-to-App application connectivity, PostgreSQL authentication, SQL execution, and full application integration remain unverified.
+- The complete three-tier application and its high-availability mechanisms have not yet been implemented or verified.
