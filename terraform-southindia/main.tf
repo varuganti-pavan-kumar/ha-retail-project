@@ -32,27 +32,20 @@ resource "azurerm_subnet" "ha_retail_app" {
   address_prefixes     = ["10.0.3.0/24"]
 }
 
-resource "azurerm_subnet" "ha_retail_db" {
-  name                 = "snet-db"
-  resource_group_name  = azurerm_resource_group.ha_retail.name
-  virtual_network_name = azurerm_virtual_network.ha_retail.name
-  address_prefixes     = ["10.0.4.0/24"]
-}
-
 resource "azurerm_network_security_group" "web" {
   name                = "nsg-web"
   location            = azurerm_resource_group.ha_retail.location
   resource_group_name = azurerm_resource_group.ha_retail.name
 
   security_rule {
-    name                       = "AllowHTTPSFromAppGateway"
+    name                       = "AllowHTTPFromAppVNet"
     priority                   = 100
     direction                  = "Inbound"
     access                     = "Allow"
     protocol                   = "Tcp"
     source_port_range          = "*"
-    destination_port_range     = "443"
-    source_address_prefix      = "10.0.1.0/24"
+    destination_port_range     = "80"
+    source_address_prefix      = "VirtualNetwork"
     destination_address_prefix = "*"
   }
 
@@ -109,42 +102,6 @@ resource "azurerm_subnet_network_security_group_association" "app" {
   network_security_group_id = azurerm_network_security_group.app.id
 }
 
-resource "azurerm_network_security_group" "db" {
-  name                = "nsg-db"
-  location            = azurerm_resource_group.ha_retail.location
-  resource_group_name = azurerm_resource_group.ha_retail.name
-
-  security_rule {
-    name                       = "AllowAppToPostgreSQL"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "5432"
-    source_address_prefix      = "10.0.3.0/24"
-    destination_address_prefix = "*"
-  }
-
-  security_rule {
-    name                       = "DenyOtherVnetInbound"
-    priority                   = 4000
-    direction                  = "Inbound"
-    access                     = "Deny"
-    protocol                   = "*"
-    source_port_range          = "*"
-    destination_port_range     = "*"
-    source_address_prefix      = "VirtualNetwork"
-    destination_address_prefix = "*"
-  }
-}
-
-resource "azurerm_subnet_network_security_group_association" "db" {
-  subnet_id                 = azurerm_subnet.ha_retail_db.id
-  network_security_group_id = azurerm_network_security_group.db.id
-}
-
-
 # Network adapter for the web VM
 resource "azurerm_network_interface" "web" {
   name                = "${var.project_name}-web-nic"
@@ -189,4 +146,154 @@ resource "azurerm_linux_virtual_machine" "web" {
     sku       = "22_04-lts"
     version   = "latest"
   }
+}
+
+
+# Application tier network interface
+resource "azurerm_network_interface" "app" {
+  name                = "${var.project_name}-app-nic"
+  location            = azurerm_resource_group.ha_retail.location
+  resource_group_name = azurerm_resource_group.ha_retail.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.ha_retail_app.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+# Application tier VM
+resource "azurerm_linux_virtual_machine" "app" {
+  name                = "${var.project_name}-app-vm"
+  resource_group_name = azurerm_resource_group.ha_retail.name
+  location            = azurerm_resource_group.ha_retail.location
+  size                = "Standard_B2ats_v2"
+
+  admin_username                  = "azureuser"
+  disable_password_authentication = true
+  network_interface_ids           = [azurerm_network_interface.app.id]
+
+  admin_ssh_key {
+    username   = "azureuser"
+    public_key = file("${pathexpand("~")}/.ssh/ha-retail-vm.pub")
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
+    version   = "latest"
+  }
+}
+
+# UK South resource group for managed PostgreSQL
+resource "azurerm_resource_group" "postgresql" {
+  name     = "${var.project_name}-postgresql-uksouth"
+  location = "uksouth"
+}
+
+# UK South VNet for PostgreSQL private access
+resource "azurerm_virtual_network" "postgresql" {
+  name                = "${var.project_name}-postgresql-vnet"
+  location            = azurerm_resource_group.postgresql.location
+  resource_group_name = azurerm_resource_group.postgresql.name
+  address_space       = ["10.1.0.0/16"]
+}
+
+
+# Dedicated subnet for PostgreSQL Flexible Server
+resource "azurerm_subnet" "postgresql" {
+  name                 = "snet-postgresql"
+  resource_group_name  = azurerm_resource_group.postgresql.name
+  virtual_network_name = azurerm_virtual_network.postgresql.name
+  address_prefixes     = ["10.1.1.0/24"]
+  service_endpoints    = ["Microsoft.Storage"]
+
+  delegation {
+    name = "postgresql-delegation"
+
+    service_delegation {
+      name = "Microsoft.DBforPostgreSQL/flexibleServers"
+
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+      ]
+    }
+  }
+}
+
+# South India to UK South peering
+resource "azurerm_virtual_network_peering" "southindia_to_uksouth" {
+  name                      = "southindia-to-uksouth"
+  resource_group_name       = azurerm_resource_group.ha_retail.name
+  virtual_network_name      = azurerm_virtual_network.ha_retail.name
+  remote_virtual_network_id = azurerm_virtual_network.postgresql.id
+
+  allow_virtual_network_access = true
+}
+
+# UK South to South India peering
+resource "azurerm_virtual_network_peering" "uksouth_to_southindia" {
+  name                      = "uksouth-to-southindia"
+  resource_group_name       = azurerm_resource_group.postgresql.name
+  virtual_network_name      = azurerm_virtual_network.postgresql.name
+  remote_virtual_network_id = azurerm_virtual_network.ha_retail.id
+
+  allow_virtual_network_access = true
+}
+
+
+# Private DNS zone for PostgreSQL Flexible Server
+resource "azurerm_private_dns_zone" "postgresql" {
+  name                = "${var.project_name}.postgres.database.azure.com"
+  resource_group_name = azurerm_resource_group.postgresql.name
+}
+
+# Link DNS zone to the UK South VNet
+resource "azurerm_private_dns_zone_virtual_network_link" "postgresql_uksouth" {
+  name                  = "postgresql-dns-uksouth"
+  resource_group_name   = azurerm_resource_group.postgresql.name
+  private_dns_zone_name = azurerm_private_dns_zone.postgresql.name
+  virtual_network_id    = azurerm_virtual_network.postgresql.id
+  registration_enabled  = false
+}
+
+# Link DNS zone to the South India VNet
+resource "azurerm_private_dns_zone_virtual_network_link" "postgresql_southindia" {
+  name                  = "postgresql-dns-southindia"
+  resource_group_name   = azurerm_resource_group.postgresql.name
+  private_dns_zone_name = azurerm_private_dns_zone.postgresql.name
+  virtual_network_id    = azurerm_virtual_network.ha_retail.id
+  registration_enabled  = false
+}
+
+
+# Managed PostgreSQL server in UK South
+resource "azurerm_postgresql_flexible_server" "postgresql" {
+  name                = "${var.project_name}-pg"
+  resource_group_name = azurerm_resource_group.postgresql.name
+  location            = azurerm_resource_group.postgresql.location
+
+  version    = "18"
+  zone       = "3"
+  sku_name   = "B_Standard_B2s"
+  storage_mb = 32768
+
+  administrator_login    = var.postgresql_admin
+  administrator_password = var.postgresql_password
+
+  delegated_subnet_id = azurerm_subnet.postgresql.id
+  private_dns_zone_id = azurerm_private_dns_zone.postgresql.id
+
+  public_network_access_enabled = false
+
+  depends_on = [
+    azurerm_private_dns_zone_virtual_network_link.postgresql_uksouth,
+    azurerm_private_dns_zone_virtual_network_link.postgresql_southindia
+  ]
 }
