@@ -30,6 +30,8 @@ resource "azurerm_subnet" "ha_retail_app" {
   resource_group_name  = azurerm_resource_group.ha_retail.name
   virtual_network_name = azurerm_virtual_network.ha_retail.name
   address_prefixes     = ["10.0.3.0/24"]
+
+  service_endpoints = ["Microsoft.KeyVault"]
 }
 
 resource "azurerm_network_security_group" "web" {
@@ -173,6 +175,10 @@ resource "azurerm_linux_virtual_machine" "app" {
   disable_password_authentication = true
   network_interface_ids           = [azurerm_network_interface.app.id]
 
+  identity {
+    type = "SystemAssigned"
+  }
+
   admin_ssh_key {
     username   = "azureuser"
     public_key = file("${pathexpand("~")}/.ssh/ha-retail-vm.pub")
@@ -296,4 +302,40 @@ resource "azurerm_postgresql_flexible_server" "postgresql" {
     azurerm_private_dns_zone_virtual_network_link.postgresql_uksouth,
     azurerm_private_dns_zone_virtual_network_link.postgresql_southindia
   ]
+}
+
+
+# Read the current Azure subscription and tenant details
+data "azurerm_client_config" "current" {}
+
+# Azure Key Vault for application secrets
+resource "azurerm_key_vault" "ha_retail" {
+  name = "hrkv${substr(replace(data.azurerm_client_config.current.subscription_id, "-", ""), 0, 20)}"
+
+  location            = azurerm_resource_group.ha_retail.location
+  resource_group_name = azurerm_resource_group.ha_retail.name
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "standard"
+
+  rbac_authorization_enabled    = true
+  soft_delete_retention_days    = 7
+  purge_protection_enabled      = true
+  public_network_access_enabled = true
+
+  network_acls {
+    bypass         = "AzureServices"
+    default_action = "Deny"
+
+    virtual_network_subnet_ids = [
+      azurerm_subnet.ha_retail_app.id
+    ]
+  }
+}
+
+# Allow the app VM to read secrets, but not manage them
+resource "azurerm_role_assignment" "app_key_vault_secrets_user" {
+  scope                = azurerm_key_vault.ha_retail.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_virtual_machine.app.identity[0].principal_id
+  principal_type       = "ServicePrincipal"
 }

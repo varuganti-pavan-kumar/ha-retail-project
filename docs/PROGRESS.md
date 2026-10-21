@@ -2,8 +2,8 @@
 
 This file tracks completed milestones, implementation progress, troubleshooting, validation results, and remaining work for the HA Retail Azure project.
 
-**Last updated:** 2026-10-20  
-**Overall status:** Infrastructure deployed; end-to-end application validation in progress.
+**Last updated:** 2026-10-21
+**Overall status:** Infrastructure deployed; Key Vault endpoint access validated; end-to-end application validation in progress.
 
 ## Milestone 1 — Terraform Foundation
 
@@ -14,7 +14,7 @@ This file tracks completed milestones, implementation progress, troubleshooting,
 - Ran Terraform formatting, validation, and planning.
 - Created a separate Terraform configuration in `terraform-southindia/` for the South India infrastructure.
 - Updated the Terraform source to match the deployed resources, including the PostgreSQL availability zone and subnet service endpoint configuration.
-- Confirmed `terraform validate` succeeds and `terraform plan` reports no changes.
+- Confirmed `terraform validate` succeeds and `terraform plan` reports no changes after the earlier reconciliation.
 - Committed and pushed the Terraform update in commit `76b915c` (`Align Terraform with deployed multi-region infrastructure`).
 
 ## Milestone 2 — South India Network Foundation
@@ -93,38 +93,71 @@ The storefront is hosted independently of the Terraform-managed virtual network.
 
 ## Milestone 9 — Cost Management
 
-**Status: Compute stopped after testing**
+**Status: Compute was stopped after earlier testing; resources restarted for subsequent validation**
 
-- Deallocated the web VM.
-- Deallocated the application VM.
-- Stopped the PostgreSQL Flexible Server.
-- Confirmed that the VMs were deallocated and PostgreSQL was stopped.
+- Previously deallocated the web VM.
+- Previously deallocated the application VM.
+- Previously stopped the PostgreSQL Flexible Server.
+- Confirmed that the VMs were deallocated and PostgreSQL was stopped at that time.
+- Restarted the VMs and PostgreSQL for later validation work.
 
-Stopping compute does not eliminate all costs. Storage, backups, DNS, networking, and other retained resources may continue to incur charges. PostgreSQL may automatically restart after its permitted stopped period.
+Stopping compute does not eliminate all costs. Storage, backups, DNS, networking, Key Vault, and other retained resources may continue to incur charges. PostgreSQL may automatically restart after its permitted stopped period.
+
+Check current resource status and stop compute when testing is complete.
 
 ## Milestone 10 — Terraform and GitHub Reconciliation
 
-**Status: Completed**
+**Status: Completed for the earlier reconciliation**
 
 - Corrected the Terraform PostgreSQL server availability zone to match the deployed configuration.
 - Added the `Microsoft.Storage` service endpoint to the PostgreSQL subnet configuration to match the deployed subnet.
 - Ran `terraform fmt` and `terraform validate`.
 - Confirmed `terraform plan` reported: `No changes. Your infrastructure matches the configuration.`
-- Staged only `terraform-southindia/main.tf` and `terraform-southindia/variables.tf`.
+- Staged only the intended Terraform source files.
 - Confirmed Terraform state files and `.terraform/` are ignored by Git.
 - Committed and pushed the changes; the working tree was clean afterward.
 
+The later Key Vault infrastructure changes were also formatted, validated, planned, and applied successfully. The Key Vault deployment reported `2 added, 1 changed, 0 destroyed`.
+
 A no-change Terraform plan confirms Terraform sees no configuration changes to apply. It does not prove application connectivity or database authentication.
+
+## Milestone 11 — Azure Key Vault and Managed Identity
+
+**Status: Deployed; endpoint access test passed; actual secret retrieval pending**
+
+- Created Azure Key Vault `hrkv6952055559284c2ca73a` in South India using Terraform.
+- Enabled Key Vault RBAC authorization.
+- Configured the vault's network ACL default action as `Deny`.
+- Enabled the `Microsoft.KeyVault` service endpoint on the application subnet.
+- Added the application subnet to the Key Vault's virtual network rules.
+- Enabled soft delete with a seven-day retention period and enabled purge protection.
+- Enabled the application VM's system-assigned managed identity.
+- Assigned the `Key Vault Secrets User` role to the application VM identity at the individual vault scope.
+- Verified that the vault reports RBAC enabled, public network access enabled, and a default network action of `Deny`.
+- Verified that the expected role assignment exists for the application VM's managed identity.
+- Used Azure Run Command to test the application VM's managed identity and Key Vault endpoint.
+- Confirmed `MANAGED_IDENTITY_TOKEN_ACQUIRED=True`.
+- Confirmed `KEY_VAULT_HTTP_STATUS=200`.
+
+**Important distinction:** The HTTP 200 result verifies authenticated access to the secrets endpoint. A separate secret-list request using the developer's Azure CLI identity returned `403 ForbiddenByRbac` because that identity does not have the necessary Key Vault data-plane permission. This is distinct from the app VM's managed identity.
+
+**Still pending:**
+
+- Create a harmless test secret using an appropriately authorized identity.
+- Verify that the app VM can retrieve that secret.
+- Confirm the secret value is not printed or logged.
+- Integrate Key Vault into the application configuration.
 
 ## Next Milestones
 
-1. Start the VMs and run a simple test service on the application VM's TCP port 8080.
-2. Test Web VM → App VM connectivity and record the actual result.
-3. Securely authenticate to PostgreSQL and execute a test SQL query.
-4. Deploy the application service and connect it to PostgreSQL.
-5. Configure and validate Application Gateway if required.
-6. Implement monitoring, backups, and resilience testing.
-7. Review security rules and ongoing Azure costs.
+1. Verify actual secret retrieval from the app VM using a non-sensitive test secret.
+2. Start or confirm the VMs are running and run a simple test service on the application VM's TCP port 8080.
+3. Test Web VM → App VM connectivity and record the actual result.
+4. Securely authenticate to PostgreSQL and execute a test SQL query.
+5. Deploy the application service and connect it to PostgreSQL and Key Vault.
+6. Configure and validate Application Gateway if required.
+7. Implement monitoring, backups, and resilience testing.
+8. Review security rules and ongoing Azure costs.
 
 ## Project Notes
 
@@ -133,6 +166,7 @@ A no-change Terraform plan confirms Terraform sees no configuration changes to a
 - The Application Gateway subnet exists, but no Application Gateway has been deployed.
 - The current Terraform configuration does not define a separate NSG for the PostgreSQL subnet.
 - Nginx local testing, App-to-Web HTTP connectivity, PostgreSQL DNS resolution, and PostgreSQL TCP connectivity passed.
-- Web-to-App application connectivity, PostgreSQL authentication, SQL execution, and full application integration remain unverified.
-- Both VMs are deallocated and PostgreSQL is stopped; retained resources may still incur charges.
+- Key Vault managed-identity token acquisition and authenticated secrets-endpoint access passed.
+- Actual Key Vault secret retrieval, Web-to-App application connectivity, PostgreSQL authentication, SQL execution, and full application integration remain unverified.
+- Check the current status of the VMs and PostgreSQL before assuming they are stopped. Retained resources may still incur charges.
 - The complete three-tier application and its high-availability mechanisms have not yet been implemented or verified.
