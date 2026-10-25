@@ -1,189 +1,209 @@
-# HA Retail — Azure Infrastructure & DevOps Project
+# High-Availability Retail Platform on Azure
 
-A hands-on cloud engineering portfolio project demonstrating Azure networking, infrastructure as code, identity-based security, secrets management, Linux administration, CI/CD, and cloud troubleshooting.
+A cloud engineering project demonstrating how to design, deploy, secure, and validate a retail platform using Microsoft Azure, Terraform, Linux virtual machines, managed identities, Azure Key Vault, and Azure Database for PostgreSQL.
 
-## Project Overview
+> **Project status:** Core infrastructure is deployed, and several network and security checks have passed. Full application integration, end-to-end request flow, database authentication, and high-availability implementation remain in progress.
 
-The goal is to build a secure, highly available retail application architecture on Microsoft Azure, using Terraform to provision infrastructure and GitHub Actions to automate website deployment.
+## 1. Project Overview
 
-**Current status:** The web and application VM infrastructure in South India and PostgreSQL infrastructure in UK South are deployed. Selected private-network connectivity checks and Key Vault endpoint access have passed. End-to-end application integration and high availability remain in progress.
+This project uses a **three-tier architecture** to separate the presentation, application, and data responsibilities of a retail platform.
 
-The static storefront is hosted separately through Azure Static Web Apps.
+The goal is to build a secure, maintainable, and scalable foundation while practising real-world cloud engineering: infrastructure as code, network segmentation, identity-based access, private database connectivity, CI/CD, troubleshooting, and cost management.
 
-## Architecture
+The architecture separates components into distinct tiers instead of placing the entire application on a single server. Each tier has its own responsibility, network placement, and access requirements.
 
-The current infrastructure spans two Azure regions.
+## 2. Architecture
 
-### South India — Web and Application Tiers
+### Three-tier design
+
+```mermaid
+flowchart TB
+    Customer["Customer / Browser"]
+    Storefront["Presentation Tier<br/>Azure Static Web Apps"]
+    Web["Web Tier<br/>Ubuntu VM + Nginx<br/>10.0.2.4"]
+    App["Application Tier<br/>Ubuntu VM<br/>10.0.3.4"]
+    DB["Data Tier<br/>Azure Database for PostgreSQL<br/>UK South · Private IP 10.1.1.4"]
+    KV["Azure Key Vault<br/>Managed Identity + RBAC"]
+    Customer --> Storefront
+    Customer --> Web
+    Web -->|"Intended application traffic<br/>TCP 8080 · validation pending"| App
+    App -->|"Private database connection<br/>TCP 5432 reachable"| DB
+    App -.->|"Secret retrieval verified<br/>Diagnostic test"| KV
+```
+
+*The diagram represents the target architecture and current deployed components. It does not imply that the full retail request flow is already operational.*
+
+### Tier responsibilities
+
+| Tier | Responsibility | Current implementation |
+|---|---|---|
+| Presentation | Deliver the storefront and receive user requests | Azure Static Web Apps hosts the storefront; an Nginx web VM provides a separate web-tier environment |
+| Application | Execute business logic and coordinate data access | Ubuntu application VM in a dedicated private subnet |
+| Data | Persist and retrieve application data | Azure Database for PostgreSQL Flexible Server in UK South, using private networking |
+
+Azure Key Vault is a supporting security service rather than a fourth application tier. It stores secrets and authorizes access through Azure role-based access control (RBAC) and managed identity.
+
+### Azure deployment layout
+
+**South India — web and application workloads**
 
 - Virtual network: `ha-retail-vnet` (`10.0.0.0/16`)
-- Application Gateway subnet: `10.0.1.0/24` (reserved; no Application Gateway deployed)
 - Web subnet: `10.0.2.0/24`
 - Application subnet: `10.0.3.0/24`
-- Web VM: `ha-retail-southindia-web-vm`, private IP `10.0.2.4`
-- Application VM: `ha-retail-southindia-app-vm`, private IP `10.0.3.4`
-- Both VMs use Ubuntu Linux and have no public IP addresses.
-- Nginx is installed on the web VM.
-- The application VM has a system-assigned managed identity.
-
-### Azure Key Vault
-
+- Reserved subnet: `10.0.1.0/24` for a potential Application Gateway deployment
+- Web VM: `ha-retail-southindia-web-vm` (`10.0.2.4`)
+- Application VM: `ha-retail-southindia-app-vm` (`10.0.3.4`)
 - Key Vault: `hrkv6952055559284c2ca73a`
-- Region: South India
-- Authorization: Azure RBAC
-- Network access: Default action `Deny`, with a virtual network rule for the application subnet
-- Application subnet: Uses the `Microsoft.KeyVault` service endpoint
-- Application VM identity: Assigned the `Key Vault Secrets User` role at the vault scope
-- Recovery protection: Soft delete and purge protection enabled
 
-The application VM successfully obtained a managed-identity token and received HTTP `200` from the Key Vault secrets endpoint.
+Both Linux VMs use Ubuntu 22.04, SSH key authentication, and no public IP addresses.
 
-**Important:** Actual retrieval of a specific secret value and application integration with Key Vault are still pending. The developer's Azure CLI identity is separate from the app VM identity and does not currently have the required secret-reading permission.
+**UK South — database workload**
 
-The vault retains a public endpoint with firewall restrictions. This is a service-endpoint design, not a private-endpoint deployment.
+- PostgreSQL server: `ha-retail-southindia-pg`
+- Database virtual network: `ha-retail-southindia-postgresql-vnet` (`10.1.0.0/16`)
+- Database subnet: `10.1.1.0/24`
+- Private database IP observed during validation: `10.1.1.4`
 
-### UK South — Database Tier
+Virtual network peering connects the South India and UK South networks. Private DNS allows the application environment to resolve the PostgreSQL server to its private IP.
 
-- Virtual network: `ha-retail-southindia-postgresql-vnet` (`10.1.0.0/16`)
-- Delegated PostgreSQL subnet: `10.1.1.0/24`
-- Azure Database for PostgreSQL Flexible Server: `ha-retail-southindia-pg`
-- PostgreSQL public network access is disabled.
-- VNet peering and private DNS connect the database network with the South India network.
+The database uses private networking through its delegated subnet; it is **not configured using a Private Endpoint**.
 
-**Important:** PostgreSQL uses private networking through a delegated subnet. This is not an Azure Private Endpoint deployment.
+## 3. Why Three-Tier Architecture?
 
-## Technologies Used
+Three-tier architecture separates the user-facing interface, business logic, and persistent data into distinct responsibilities.
 
-- Microsoft Azure
-- Terraform and AzureRM provider
-- Azure CLI
-- Azure Virtual Network, VNet peering, service endpoints, and Network Security Groups
-- Azure Key Vault and Azure RBAC
-- System-assigned managed identities
-- Azure Database for PostgreSQL Flexible Server
-- Azure Static Web Apps
-- GitHub and GitHub Actions
-- Ubuntu Linux and Nginx
-- PowerShell and SSH
+### Benefits
 
-## Completed Work
+- **Separation of concerns:** Changes to the presentation layer do not automatically require changes to database design or business logic.
+- **Security boundaries:** Network rules can restrict which tiers communicate with one another. The database does not need to be exposed directly to public clients.
+- **Independent scaling:** Web, application, and database resources can be scaled according to their different workloads.
+- **Maintainability:** Each tier can be diagnosed, updated, and managed according to its role.
+- **Fault isolation:** Logs and connectivity checks can help identify whether a problem belongs to the web, application, network, or data layer.
+- **Least-privilege access:** Each component can receive only the network and identity permissions required for its responsibilities.
 
-### 1. Infrastructure as Code
+### Trade-offs
 
-- Configured Terraform and the AzureRM provider.
-- Defined resource groups, virtual networks, subnets, VMs, VNet peering, private DNS, and PostgreSQL infrastructure.
-- Updated `terraform-southindia/` to reflect the deployed infrastructure.
-- Ran `terraform fmt` and `terraform validate` successfully.
-- Confirmed that an earlier reconciliation plan reported no changes.
-- Added Terraform configuration for Key Vault, the application subnet's Key Vault service endpoint, and the managed-identity role assignment.
-- Successfully applied the Key Vault infrastructure changes.
+Three-tier architecture also introduces additional infrastructure, cost, network configuration, DNS dependencies, and troubleshooting effort. Separating tiers does not automatically make a platform highly available: redundancy, health checks, traffic distribution, backup and recovery, and tested failover are also required.
 
-### 2. Network Security
+For this project, the design provides a practical environment for learning those boundaries and validating them incrementally.
 
-- Created separate web and application subnets.
-- Configured the web subnet NSG to allow HTTP on TCP port 80 from the `VirtualNetwork` source scope.
-- Configured the application subnet NSG to allow TCP port 8080 from the web subnet.
-- Added inbound deny rules for other traffic within the configured source scope.
-- Disabled public network access for PostgreSQL.
-- The current Terraform configuration does not define a separate NSG for the PostgreSQL subnet.
+## 4. Key Architecture and Security Decisions
 
-The intended Web VM → App VM flow still needs testing with a service listening on port 8080.
+### Network segmentation
 
-### 3. Key Vault and Managed Identity
+The web and application VMs occupy separate subnets. Network security group rules restrict application-subnet TCP 8080 ingress to the web subnet (`10.0.2.0/24`). This establishes the intended network boundary between web and application workloads.
 
-- Deployed Azure Key Vault using Terraform.
-- Enabled RBAC authorization and configured default-deny network rules.
-- Enabled the `Microsoft.KeyVault` service endpoint on the application subnet.
-- Allowed the application subnet in the vault's virtual network rules.
-- Enabled soft delete and purge protection.
-- Assigned the `Key Vault Secrets User` role to the app VM's system-assigned managed identity.
-- Verified the role assignment and vault configuration using Azure CLI.
-- Verified that the application VM obtained a managed-identity token.
-- Verified an authenticated request to the Key Vault secrets endpoint returned HTTP `200`.
+The complete web-to-application request flow has not yet been validated, and an application service listening on TCP 8080 has not been confirmed.
 
-Actual secret-value retrieval and application integration remain pending.
+### Managed identity and Azure Key Vault
 
-### 4. Static Storefront and CI/CD
+The application VM uses a system-assigned managed identity to access Key Vault without requiring a stored Azure service-principal secret.
 
-- Built a static retail storefront using HTML and CSS.
-- Deployed it using Azure Static Web Apps.
-- Connected the GitHub repository to GitHub Actions.
-- Previously verified automated storefront deployments.
+- The VM identity has the `Key Vault Secrets User` role at vault scope.
+- The vault uses Azure RBAC for authorization.
+- The Key Vault firewall's default action is `Deny`.
+- The application subnet is allowed through a virtual network rule, using the `Microsoft.KeyVault` service endpoint.
+- A diagnostic test successfully retrieved the `connectivity-test` secret and verified the expected result without printing the secret value.
+- The temporary `Key Vault Secrets Officer` assignment used during setup was removed and checked in the subsequent role listing.
 
-The storefront is hosted independently of the Terraform-managed VM and database infrastructure. Storefront deployment does not mean the backend application and database are integrated.
+**Network design note:** Key Vault currently uses a public endpoint protected by firewall rules and a virtual network service endpoint. It does not use a Private Endpoint. Public network access is enabled at the service level, but the firewall's default-deny policy restricts permitted network paths.
 
-### 5. Linux VM and Web Server Validation
+The diagnostic secret retrieval proves that identity-based access works for the test. The retail application has not yet been integrated with Key Vault.
 
-- Investigated Azure VM SKU restrictions and regional availability.
-- Deployed Ubuntu VMs in South India using Terraform.
-- Used Azure Run Command to administer the VMs without opening inbound SSH access for these tests.
-- Installed and enabled Nginx on the web VM.
-- Verified a local HTTP response of `HTTP/1.1 200 OK`.
-- Verified HTTP `200 OK` from the application VM to the web VM over the private network.
-- Used Azure Run Command to execute diagnostic scripts on the application VM.
+### PostgreSQL private connectivity
 
-Both VMs were previously deallocated after testing and later restarted for further validation. Check their current status before assuming they are stopped.
+The PostgreSQL server is deployed in UK South with public access disabled. VNet peering and private DNS provide the intended path from the application environment to the database network.
 
-### 6. PostgreSQL Network Validation
+Validation has confirmed that the database hostname resolves to `10.1.1.4` from the application environment and that TCP port `5432` is reachable. Database authentication and a SQL query from the application environment are still pending.
 
-- Deployed Azure Database for PostgreSQL Flexible Server in UK South with public network access disabled.
-- Configured cross-region VNet peering and private DNS links.
-- Verified that the PostgreSQL hostname resolved to `10.1.1.4` from the application VM.
-- Verified TCP connectivity from the application VM to PostgreSQL port 5432.
+### Infrastructure as Code
 
-DNS resolution and TCP reachability do not prove that database authentication or SQL queries work. Those checks remain pending.
+Terraform configuration in `terraform-southindia/` manages the current South India infrastructure deployment and is used to make changes repeatable and reviewable.
 
-## Key Learning
+The repository also contains an earlier `terraform/` directory. Review the relevant configuration and deployment state before applying changes to avoid unintentionally managing or modifying the wrong environment.
 
-A major troubleshooting lesson was that available vCPU quota does not guarantee that a particular VM SKU can be deployed. Regional SKU availability and subscription-specific restrictions must also be investigated.
+## 5. Technology Stack
 
-The project also demonstrates the Terraform workflow: initialize, format, validate, plan, apply when changes are intended, verify, and destroy only when resources are intentionally being removed.
+| Area | Technology |
+|---|---|
+| Cloud platform | Microsoft Azure |
+| Infrastructure as Code | Terraform |
+| Compute | Ubuntu 22.04 Linux virtual machines |
+| Web server | Nginx |
+| Presentation hosting | Azure Static Web Apps |
+| Database | Azure Database for PostgreSQL Flexible Server |
+| Secrets management | Azure Key Vault |
+| Identity and authorization | Managed identity, Azure RBAC |
+| Network security | Virtual networks, subnets, NSGs, service endpoints, VNet peering, private DNS |
+| Source control and CI/CD | GitHub and GitHub Actions |
+| Operations | Azure CLI, Linux command-line tools, HTTP and TCP connectivity checks |
 
-Another important distinction is that successful network connectivity does not prove application or database integration is working end to end.
+## 6. Validation Evidence
 
-The Key Vault work demonstrates that network restrictions and identity authorization are separate controls. A VM must have both an allowed network path and appropriate data-plane permissions. A managed identity provides authentication without requiring a separately stored client secret.
+The following table distinguishes successful checks from work that still needs to be completed.
 
-## Current Limitations
+| Validation | Result |
+|---|---|
+| Terraform deployment of the current infrastructure | Completed for the documented resources |
+| Nginx local HTTP response on the web VM | HTTP 200 verified |
+| App VM to web VM HTTP request | HTTP 200 verified |
+| Web VM to application VM on TCP 8080 | Pending |
+| PostgreSQL hostname resolution from app environment | Private IP resolution verified |
+| App environment to PostgreSQL TCP 5432 | Reachability verified |
+| PostgreSQL authentication and SQL query | Pending |
+| App VM managed identity token acquisition | Verified |
+| Key Vault test-secret retrieval | HTTP 200; `SECRET_RETRIEVAL=SUCCESS` |
+| Key Vault firewall default-deny and subnet rule | Verified |
+| Temporary Key Vault Secrets Officer assignment cleanup | Removed and checked in role listing |
+| Full retail request flow across all three tiers | Pending |
+| Application-level use of Key Vault secret | Pending |
+| Application Gateway and high-availability traffic distribution | Not yet implemented |
 
-- A test service must be started on the application VM's TCP port 8080 before Web VM → App VM connectivity can be verified.
-- Actual Key Vault secret retrieval has not yet been verified.
-- PostgreSQL authentication and a test SQL query have not yet been verified.
-- The backend application has not yet been integrated with PostgreSQL or Key Vault.
-- An Application Gateway has not been deployed.
-- Load balancing, monitoring, backup, and resilience testing remain unfinished.
-- The Nginx local test did not verify public website access.
-- High availability has not yet been implemented or demonstrated.
+These checks validate specific parts of the infrastructure. They do not establish that every part of the retail application is operational.
 
-## Next Steps
+## 7. Current Limitations and Next Steps
 
-1. Create a harmless test secret using an appropriately authorized identity and verify retrieval from the app VM without printing the secret value.
-2. Start or confirm the VMs are running and run a test service on the application VM's TCP port 8080.
-3. Test Web VM → App VM connectivity and record the actual result.
-4. Securely authenticate to PostgreSQL and execute a test SQL query.
-5. Deploy the application service and integrate it with PostgreSQL and Key Vault.
-6. Configure and validate Application Gateway if required by the final design.
-7. Add monitoring, backup, and resilience testing.
-8. Document deployment, cleanup, and cost-management procedures.
+1. **Complete application-tier setup:** Deploy or verify the application service and confirm it listens on TCP 8080.
+2. **Validate the correct traffic direction:** Test web VM → application VM and document the HTTP response.
+3. **Complete database validation:** Authenticate from the application environment and execute a test SQL query.
+4. **Integrate the application with Key Vault:** Replace any application-level hard-coded or locally stored secrets with managed-identity-based retrieval where appropriate.
+5. **Test an end-to-end request:** Demonstrate the intended storefront/web → application → PostgreSQL flow.
+6. **Implement high availability:** Evaluate and deploy an appropriate traffic-distribution solution, such as Application Gateway, along with health checks and suitable backend redundancy.
+7. **Document resilience:** Define and test backup, recovery, monitoring, and failure scenarios.
+8. **Strengthen delivery automation:** Extend CI/CD and validation where appropriate without exposing secrets in logs.
+9. **Review operational costs:** Stop or deallocate resources when not required for testing and monitor database and networking charges.
 
-## Repository Structure
+## 8. Repository Structure
 
-- `terraform/` — Original Terraform configuration.
-- `terraform-southindia/` — Terraform configuration for the current South India and UK South infrastructure.
-- `website/` — Static storefront source.
-- `docs/PROGRESS.md` — Development log and validation results.
-- `docs/architecture-decisions.md` — Architecture choices and troubleshooting notes.
-- `.github/workflows/` — GitHub Actions workflow.
+```text
+ha-retail-project/
+├── .github/
+│   └── workflows/                 # GitHub Actions workflows
+├── docs/
+│   ├── PROGRESS.md                # Milestones and validation status
+│   └── architecture-decisions.md  # Architecture decisions and trade-offs
+├── terraform/                     # Earlier Terraform configuration
+├── terraform-southindia/          # Current South India deployment configuration
+├── website/                       # Retail storefront source
+└── README.md
+```
 
-Terraform state, provider working files, credentials, and secret variable files must not be committed to Git.
+Check each Terraform directory's configuration and state before running `terraform plan` or `terraform apply`.
 
-## Cost Awareness
+## 9. Cost and Security Considerations
 
-Both VMs and PostgreSQL were restarted for recent validation after previously being stopped. Check their current status before ending a work session.
+- VM compute, managed database capacity, storage, and network services can incur charges while provisioned or running.
+- Deallocating VMs can reduce compute charges, but associated disks and other resources may continue to incur costs.
+- Stopping PostgreSQL can reduce compute charges while stopped, but storage and other charges may continue. Check the server state before assuming it is stopped.
+- Keep SSH access restricted and use SSH keys rather than password-based login where possible.
+- Avoid committing credentials, secret values, private keys, or Terraform state containing sensitive data.
+- Prefer managed identity and narrowly scoped RBAC permissions over embedded credentials.
+- Verify the Key Vault firewall and role assignments after making security changes.
 
-Deallocating VMs and stopping PostgreSQL reduce compute charges but do not eliminate all costs. Disks, backups, DNS, networking, Key Vault, and other retained services may continue to incur charges. PostgreSQL may automatically restart after Azure's permitted stopped period. Review resource status and Azure Cost Management regularly.
+## 10. Project Summary
 
-## Repository
+This project demonstrates the design and incremental validation of a three-tier retail platform on Azure. It combines segmented web and application workloads, a privately networked PostgreSQL database across regions, Terraform-managed infrastructure, CI/CD, and managed-identity-based Key Vault access.
 
-GitHub: https://github.com/varuganti-pavan-kumar/ha-retail-project
+The foundation and several important connectivity and security checks are complete. Full application integration and high-availability implementation remain explicit next steps rather than claimed achievements.
 
-**Project status:** In progress — Azure Cloud Engineering portfolio project.
+Repository: https://github.com/varuganti-pavan-kumar/ha-retail-project

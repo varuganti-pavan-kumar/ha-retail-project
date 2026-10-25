@@ -1,172 +1,217 @@
-# Project Development Log
+# Project Progress — Azure Three-Tier Retail Platform
 
-This file tracks completed milestones, implementation progress, troubleshooting, validation results, and remaining work for the HA Retail Azure project.
+**Last updated:** 25 October 2026
 
-**Last updated:** 2026-10-21
-**Overall status:** Infrastructure deployed; Key Vault endpoint access validated; end-to-end application validation in progress.
+## Project Goal
 
-## Milestone 1 — Terraform Foundation
+Build and validate a secure, maintainable retail platform on Azure using a three-tier architecture:
 
-**Status: Completed**
+1. **Presentation:** Retail storefront and web-serving layer.
+2. **Application:** Application workload and business logic.
+3. **Data:** PostgreSQL persistence layer.
 
-- Configured the Terraform Azure provider and version constraints.
-- Added project variables and `.gitignore` rules.
-- Ran Terraform formatting, validation, and planning.
-- Created a separate Terraform configuration in `terraform-southindia/` for the South India infrastructure.
-- Updated the Terraform source to match the deployed resources, including the PostgreSQL availability zone and subnet service endpoint configuration.
-- Confirmed `terraform validate` succeeds and `terraform plan` reports no changes after the earlier reconciliation.
-- Committed and pushed the Terraform update in commit `76b915c` (`Align Terraform with deployed multi-region infrastructure`).
+The project also covers Terraform, network segmentation, private connectivity, managed identity, Key Vault, CI/CD, troubleshooting, and operational cost management.
 
-## Milestone 2 — South India Network Foundation
+## Status Summary
+
+- **Infrastructure:** Core resources deployed.
+- **Web validation:** Nginx HTTP response verified.
+- **Application integration:** Incomplete; TCP 8080 application service and web-to-app request flow remain unverified.
+- **Database networking:** Private DNS resolution and TCP connectivity verified; authentication and SQL execution pending.
+- **Key Vault:** Managed-identity secret retrieval verified; retail application integration pending.
+- **High availability:** Not yet implemented end to end.
+
+## Milestones
+
+### 1. Repository and Terraform foundation
+
+**Status: Completed for the documented deployment**
+
+- Established the GitHub repository and project structure.
+- Maintained Terraform configuration for the Azure environment.
+- Used Terraform to deploy and reconcile infrastructure.
+- Retained an earlier `terraform/` directory alongside the current `terraform-southindia/` configuration.
+
+**Operational note:** Confirm the intended directory and Terraform state before planning or applying changes.
+
+### 2. South India virtual network and compute
 
 **Status: Deployed**
 
-- Created resource group `ha-retail-southindia`.
 - Created virtual network `ha-retail-vnet` with address space `10.0.0.0/16`.
-- Created the reserved Application Gateway subnet `10.0.1.0/24`.
-- Created the web subnet `10.0.2.0/24`.
-- Created the application subnet `10.0.3.0/24`.
-- Configured Network Security Groups for the web and application subnets.
-- Deployed web and application Linux VMs without public IP addresses.
+- Created web subnet `10.0.2.0/24`.
+- Created application subnet `10.0.3.0/24`.
+- Reserved subnet `10.0.1.0/24` for a potential Application Gateway.
+- Deployed Ubuntu 22.04 web and application VMs.
+- Configured the VMs without public IP addresses and with SSH key authentication.
 
-## Milestone 3 — Web Server Setup and Validation
+| Resource | Name | Private IP |
+|---|---|---|
+| Web VM | `ha-retail-southindia-web-vm` | `10.0.2.4` |
+| Application VM | `ha-retail-southindia-app-vm` | `10.0.3.4` |
 
-**Status: Local test passed**
+### 3. Web-tier HTTP validation
 
-- Installed Nginx on the web VM.
-- Enabled Nginx to start automatically.
-- Tested `http://localhost` on the web VM.
-- Received `HTTP/1.1 200 OK`, confirming that Nginx responded locally.
+**Status: Completed for local web-server check**
 
-This test did not verify public website access.
+- Installed or configured Nginx on the web VM.
+- Verified an HTTP 200 response from Nginx on the web VM.
 
-## Milestone 4 — Private Network Connectivity
+This confirms that the tested web server responded successfully. It does not prove that the complete storefront-to-application request path works.
 
-**Status: Partially verified**
+### 4. Web-to-application integration
 
-- Sent an HTTP request from the application VM to the web VM at `10.0.2.4`.
-- Received `HTTP/1.1 200 OK`.
-- Confirmed that the application VM could reach Nginx on the web VM over the private network.
+**Status: Pending**
 
-**Important limitation:** This test verified App VM → Web VM connectivity. The intended Web VM → App VM flow on TCP port 8080 has not yet been tested successfully. A service must be listening on the application VM's port 8080 before this test can be completed.
+- Configured the application NSG to allow inbound TCP 8080 from the web subnet `10.0.2.0/24`.
+- Verified that an HTTP request from the application VM to the web VM returned HTTP 200.
 
-## Milestone 5 — PostgreSQL Infrastructure
+**Important:** The successful test was in the application-to-web direction. The intended web-to-application direction has not yet been verified, and an application service listening on TCP 8080 has not been confirmed.
 
-**Status: Deployed; network checks passed**
+**Next action:** Verify the application service, test TCP 8080 from the web VM, and perform an HTTP request against the application endpoint.
 
-- Created a separate resource group and virtual network in UK South.
-- Created the delegated PostgreSQL subnet `10.1.1.0/24`.
-- Deployed Azure Database for PostgreSQL Flexible Server with public network access disabled.
-- Configured bidirectional VNet peering between South India and UK South.
-- Linked the PostgreSQL private DNS zone to both virtual networks.
-- Verified that the PostgreSQL hostname resolved to `10.1.1.4` from the application VM.
-- Verified TCP connectivity from the application VM to PostgreSQL port 5432.
+### 5. PostgreSQL deployment and private networking
 
-**Still pending:** Successful database authentication and execution of a test SQL query.
+**Status: Infrastructure and network checks completed; database test pending**
 
-## Milestone 6 — Static Retail Storefront
+- Deployed Azure Database for PostgreSQL Flexible Server in UK South.
+- Configured public access as disabled.
+- Used a delegated database subnet in a separate virtual network.
+- Configured South India ↔ UK South VNet peering.
+- Configured private DNS links for the network environments.
 
-**Status: Previously deployed**
+| Property | Value |
+|---|---|
+| Server | `ha-retail-southindia-pg` |
+| Resource group | `ha-retail-southindia-postgresql-uksouth` |
+| Region | UK South |
+| PostgreSQL version | 18 |
+| Database network | `10.1.0.0/16` |
+| Database subnet | `10.1.1.0/24` |
+| Private IP observed | `10.1.1.4` |
 
-- Created the static retail storefront using HTML and CSS.
-- Published the storefront using Azure Static Web Apps.
-- Connected the GitHub repository to the deployment workflow.
+**Verified:**
+- The database hostname resolved to the private IP from the application environment.
+- TCP port 5432 was reachable from the application environment.
 
-The storefront is hosted independently of the Terraform-managed virtual network. Its deployment does not mean the backend application or database is integrated.
+**Pending:**
+- Authenticate to PostgreSQL from the application environment.
+- Execute a test SQL query.
+- Verify application-level database connectivity.
 
-## Milestone 7 — CI/CD Verification
+Network reachability alone does not confirm successful database authentication or query execution.
 
-**Status: Previously tested successfully**
+### 6. Retail storefront hosting
 
-- Committed and pushed storefront changes to GitHub.
-- Verified the GitHub Actions deployment workflow.
-- Confirmed that updated content appeared on the live website.
+**Status: Deployed**
 
-## Milestone 8 — VM SKU and Quota Troubleshooting
+- Maintained storefront source code in `website/`.
+- Hosted the storefront on Azure Static Web Apps.
+- Used GitHub Actions for the storefront delivery workflow.
 
-**Status: Resolved for the deployed VMs**
+The hosted storefront and the separate web VM represent related presentation components; their complete integration with the application tier remains to be validated.
 
-- Investigated VM deployment failures caused by regional SKU availability and subscription quota restrictions.
-- Used Azure CLI to inspect VM SKU restrictions and vCPU quotas.
-- Selected `Standard_B2ats_v2`.
-- Successfully deployed both South India VMs.
+### 7. GitHub Actions and delivery workflow
 
-## Milestone 9 — Cost Management
+**Status: Existing workflow verified**
 
-**Status: Compute was stopped after earlier testing; resources restarted for subsequent validation**
+- Maintained workflow definitions under `.github/workflows/`.
+- Used GitHub for source control and automated storefront delivery.
+- Kept infrastructure changes reviewable through repository commits.
 
-- Previously deallocated the web VM.
-- Previously deallocated the application VM.
-- Previously stopped the PostgreSQL Flexible Server.
-- Confirmed that the VMs were deallocated and PostgreSQL was stopped at that time.
-- Restarted the VMs and PostgreSQL for later validation work.
+Further automation and end-to-end validation can be added as the application becomes operational.
 
-Stopping compute does not eliminate all costs. Storage, backups, DNS, networking, Key Vault, and other retained resources may continue to incur charges. PostgreSQL may automatically restart after its permitted stopped period.
+### 8. VM sizing and quota troubleshooting
 
-Check current resource status and stop compute when testing is complete.
+**Status: Troubleshooting completed for the deployment steps performed**
 
-## Milestone 10 — Terraform and GitHub Reconciliation
+- Worked through Azure VM sizing and quota constraints during deployment.
+- Selected the VM sizes used by the current environment.
 
-**Status: Completed for the earlier reconciliation**
+Current VMs use the `Standard_B2ats_v2` size. Recheck regional availability and quota before recreating or expanding the environment.
 
-- Corrected the Terraform PostgreSQL server availability zone to match the deployed configuration.
-- Added the `Microsoft.Storage` service endpoint to the PostgreSQL subnet configuration to match the deployed subnet.
-- Ran `terraform fmt` and `terraform validate`.
-- Confirmed `terraform plan` reported: `No changes. Your infrastructure matches the configuration.`
-- Staged only the intended Terraform source files.
-- Confirmed Terraform state files and `.terraform/` are ignored by Git.
-- Committed and pushed the changes; the working tree was clean afterward.
+### 9. Operational cost management
 
-The later Key Vault infrastructure changes were also formatted, validated, planned, and applied successfully. The Key Vault deployment reported `2 added, 1 changed, 0 destroyed`.
+**Status: Practices identified; ongoing monitoring required**
 
-A no-change Terraform plan confirms Terraform sees no configuration changes to apply. It does not prove application connectivity or database authentication.
+- Identified VM and database compute as resources to manage when the environment is not being tested.
+- Established the need to check actual resource states before assuming that workloads are stopped.
+- Recognized that deallocated VMs may still incur disk and other charges, and stopped PostgreSQL may still incur storage charges.
 
-## Milestone 11 — Azure Key Vault and Managed Identity
+Before ending a testing session, verify which resources are running and stop or deallocate eligible resources when appropriate.
 
-**Status: Deployed; endpoint access test passed; actual secret retrieval pending**
+### 10. Terraform reconciliation and Key Vault deployment
 
-- Created Azure Key Vault `hrkv6952055559284c2ca73a` in South India using Terraform.
-- Enabled Key Vault RBAC authorization.
-- Configured the vault's network ACL default action as `Deny`.
+**Status: Completed for the documented deployment**
+
+- Reconciled Terraform configuration with the deployed environment.
+- Deployed the Key Vault resources through Terraform.
+- Recorded the deployment result: `Apply complete! Resources: 2 added, 1 changed, 0 destroyed.`
+
+### 11. Key Vault network and identity configuration
+
+**Status: Verified**
+
+- Key Vault: `hrkv6952055559284c2ca73a`
+- Resource group: `ha-retail-southindia`
+- Configured Azure RBAC authorization.
+- Assigned the application VM's system-assigned managed identity the `Key Vault Secrets User` role at vault scope.
 - Enabled the `Microsoft.KeyVault` service endpoint on the application subnet.
-- Added the application subnet to the Key Vault's virtual network rules.
-- Enabled soft delete with a seven-day retention period and enabled purge protection.
-- Enabled the application VM's system-assigned managed identity.
-- Assigned the `Key Vault Secrets User` role to the application VM identity at the individual vault scope.
-- Verified that the vault reports RBAC enabled, public network access enabled, and a default network action of `Deny`.
-- Verified that the expected role assignment exists for the application VM's managed identity.
-- Used Azure Run Command to test the application VM's managed identity and Key Vault endpoint.
-- Confirmed `MANAGED_IDENTITY_TOKEN_ACQUIRED=True`.
-- Confirmed `KEY_VAULT_HTTP_STATUS=200`.
+- Restricted vault network access with firewall default action `Deny` and a virtual network rule for the application subnet.
+- Kept the public endpoint protected by firewall rules; a Private Endpoint was not deployed.
 
-**Important distinction:** The HTTP 200 result verifies authenticated access to the secrets endpoint. A separate secret-list request using the developer's Azure CLI identity returned `403 ForbiddenByRbac` because that identity does not have the necessary Key Vault data-plane permission. This is distinct from the app VM's managed identity.
+### 12. Key Vault secret retrieval and permission cleanup
 
-**Still pending:**
+**Status: Completed and verified on 25 October 2026**
 
-- Create a harmless test secret using an appropriately authorized identity.
-- Verify that the app VM can retrieve that secret.
-- Confirm the secret value is not printed or logged.
-- Integrate Key Vault into the application configuration.
+- Acquired a managed identity token from the application VM.
+- Retrieved the `connectivity-test` secret from Key Vault.
+- Received HTTP 200 and the result `SECRET_RETRIEVAL=SUCCESS`.
+- Validated the expected test value without printing the secret value.
+- Removed the temporary `Key Vault Secrets Officer` role assignment used during setup.
+- Checked the subsequent role-assignment listing and confirmed that this temporary assignment was absent.
 
-## Next Milestones
+The remaining listing showed the inherited subscription `Owner` role and the application's `Key Vault Secrets User` role. The temporary Key Vault Secrets Officer assignment was no longer listed.
 
-1. Verify actual secret retrieval from the app VM using a non-sensitive test secret.
-2. Start or confirm the VMs are running and run a simple test service on the application VM's TCP port 8080.
-3. Test Web VM → App VM connectivity and record the actual result.
-4. Securely authenticate to PostgreSQL and execute a test SQL query.
-5. Deploy the application service and connect it to PostgreSQL and Key Vault.
-6. Configure and validate Application Gateway if required.
-7. Implement monitoring, backups, and resilience testing.
-8. Review security rules and ongoing Azure costs.
+**Scope of validation:** This was a diagnostic test from the VM. The retail application has not yet been configured to consume the secret.
 
-## Project Notes
+### 13. Current end-to-end integration status
 
-- The primary VM and network configuration is maintained in `terraform-southindia/`.
-- The web and application VMs are in South India; PostgreSQL is in UK South.
-- The Application Gateway subnet exists, but no Application Gateway has been deployed.
-- The current Terraform configuration does not define a separate NSG for the PostgreSQL subnet.
-- Nginx local testing, App-to-Web HTTP connectivity, PostgreSQL DNS resolution, and PostgreSQL TCP connectivity passed.
-- Key Vault managed-identity token acquisition and authenticated secrets-endpoint access passed.
-- Actual Key Vault secret retrieval, Web-to-App application connectivity, PostgreSQL authentication, SQL execution, and full application integration remain unverified.
-- Check the current status of the VMs and PostgreSQL before assuming they are stopped. Retained resources may still incur charges.
-- The complete three-tier application and its high-availability mechanisms have not yet been implemented or verified.
+**Status: In progress**
+
+The infrastructure provides a foundation for the three-tier design, but the full application path has not yet been demonstrated.
+
+| Test | Status |
+|---|---|
+| Nginx local HTTP response | Passed |
+| App VM → web VM HTTP | HTTP 200 |
+| Web VM → app VM TCP 8080 / HTTP | Pending |
+| App environment → PostgreSQL DNS | Passed |
+| App environment → PostgreSQL TCP 5432 | Passed |
+| PostgreSQL authentication and SQL query | Pending |
+| VM managed identity → Key Vault secret | Passed |
+| Retail application → Key Vault | Pending |
+| Full retail request flow | Pending |
+| Application Gateway and high availability | Not implemented |
+
+## Next Steps — Recommended Order
+
+1. **Complete the application tier:** Verify or deploy the application service and confirm that TCP 8080 is listening.
+2. **Validate web-to-application traffic:** Test the intended direction from the web VM to the application VM.
+3. **Validate PostgreSQL credentials and SQL:** Run an authenticated database test from the application environment.
+4. **Integrate Key Vault with the application:** Use the VM's managed identity and appropriate RBAC permissions; avoid logging secret values.
+5. **Test the complete request path:** Demonstrate the storefront/web → application → database flow.
+6. **Implement high availability:** Evaluate Application Gateway, backend redundancy, health probes, and failover behavior.
+7. **Add monitoring and recovery procedures:** Define relevant alerts, backups, recovery expectations, and operational checks.
+8. **Review security and cost:** Recheck role assignments, firewall rules, public exposure, running resources, and ongoing charges.
+
+## Definition of Done
+
+The project should not be described as a fully operational, highly available three-tier retail platform until:
+
+- The intended web-to-application request succeeds.
+- The application authenticates to PostgreSQL and executes a test query.
+- The application retrieves the required secret through managed identity.
+- A request is traced through the intended application path.
+- High-availability components and failover behavior are implemented and tested if high availability is claimed.
+- Documentation accurately reflects the final tested state.
